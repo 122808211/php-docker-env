@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  php82:
+    build:
+      context: .
+      dockerfile: Dockerfile.php-fpm82
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    container_name: php82
+    volumes:
+      - ${PROJECT_PATH}:/apps/web/
+      - ${DOCKER_PATH}/etc/php/:/usr/local/etc/php/
+      - ${DOCKER_PATH}/logs/php/:/var/log/php/
+      - ${DOCKER_PATH}/etc/supervisor/:/etc/supervisor/
+    environment:
+      - PHP_EXTENSION_DIR=/usr/local/lib/php/extensions/no-debug-non-zts-20200930
+    depends_on:
+      - mariadb
+      - redis
+    networks:
+      - docker_mynetwork
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    volumes:
+      - ${PROJECT_PATH}:/apps/web/
+      - ${DOCKER_PATH}/etc/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${DOCKER_PATH}/etc/nginx/conf.d/:/etc/nginx/conf.d/:ro
+      - ${DOCKER_PATH}/logs/nginx/:/var/log/nginx/
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - php82
+    networks:
+      - docker_mynetwork
+
+  mariadb:
+    image: mariadb:10.11
+    container_name: mariadb
+    volumes:
+      - ${DOCKER_PATH}/data/mariadb_data/:/var/lib/mysql/
+      - ${DOCKER_PATH}/etc/mariadb/:/etc/mysql/
+      - ${DOCKER_PATH}/logs/mariadb/:/var/log/mysql/
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    networks:
+      - docker_mynetwork
+
+  redis:
+    build:
+      context: .
+      dockerfile: Dockerfile.redis
+    container_name: redis
+    volumes:
+      - ${DOCKER_PATH}/logs/redis/:/var/log/redis/
+      - ${DOCKER_PATH}/data/redis_data/:/var/lib/redis
+      - ${DOCKER_PATH}/etc/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    networks:
+      - docker_mynetwork
+    command: redis-server /usr/local/etc/redis/redis.conf
+
+networks:
+  docker_mynetwork:
+    driver: bridge

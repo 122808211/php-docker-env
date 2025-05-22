@@ -1,0 +1,84 @@
+FROM php:8.2-fpm
+
+# 镜像源
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|' /etc/apt/sources.list.d/debian.sources
+# 安装必要的依赖
+RUN apt-get update && apt-get install -y \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libpng-dev \
+    libwebp-dev \
+    libxpm-dev \
+    libzip-dev \
+    libmagickwand-dev \
+    libicu-dev \
+    libxml2-dev \
+    libcurl4-openssl-dev \
+    libreadline-dev \
+    libonig-dev \
+    supervisor \
+    python3-full \
+    python3-pip \
+    #ffmpeg \
+    imagemagick \
+    vim \
+    zip \
+    unzip \
+    inkscape \
+    git \
+    ghostscript \
+    && apt-get clean
+
+# 安装PECL扩展
+RUN pecl install imagick redis apcu \
+    && docker-php-ext-enable imagick redis apcu
+
+# 安装其他PHP扩展
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp --with-xpm \
+    && docker-php-ext-install -j$(nproc) gd
+
+RUN docker-php-ext-install -j$(nproc) pdo_mysql
+RUN docker-php-ext-install -j$(nproc) mysqli
+RUN docker-php-ext-install -j$(nproc) zip
+RUN docker-php-ext-install -j$(nproc) intl
+RUN docker-php-ext-install -j$(nproc) bcmath
+RUN docker-php-ext-install -j$(nproc) opcache
+RUN docker-php-ext-install -j$(nproc) mbstring
+RUN docker-php-ext-install -j$(nproc) xml
+RUN docker-php-ext-install -j$(nproc) dom
+RUN docker-php-ext-install -j$(nproc) curl
+RUN docker-php-ext-install -j$(nproc) pcntl
+
+# 安装Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# 创建 www 用户和组，并确保 USER_ID 和 GROUP_ID 与宿主机一致
+RUN groupadd -g 1001 www && useradd -u 1001 -g www -m www
+
+# 创建日志目录并设置权限
+RUN mkdir -p /apps/web/ && chown -R www:www /apps/web/ && chmod -R 775 /apps/web/
+RUN mkdir -p /var/log/php/ && chmod -R 775 /var/log/php/
+RUN mkdir -p /var/lib/php && chown -R www:www /var/lib/php
+RUN mkdir -p /var/log/supervisor && chmod -R 777 /var/log/supervisor
+RUN mkdir -p /var/run/supervisor/ && chmod -R 777 /var/run/supervisor/
+RUN chown -R www:www /var/run/supervisor/ && touch /var/log/supervisord.log && chown www:www /var/log/supervisord.log
+RUN chmod 775 /var/log/supervisord.log
+
+# 创建 /run/php-fpm 目录并设置权限
+RUN mkdir -p /run/php-fpm && chown -R www:www /run/php-fpm
+
+# 安装依赖
+RUN apt-get install -y net-tools iputils-ping procps
+
+# 安装pip 虚拟环境
+#RUN python3 -m venv myenv && source myenv/bin/activate && pip install numpy && pip install opencv-python && pip3 install backgroundremover && pip3 install svgwrite
+
+# 配置Supervisor 设置 ENTRYPOINT 和 CMD
+COPY ./etc/supervisord.conf /etc/supervisord.conf
+USER root
+
+ENTRYPOINT ["/usr/bin/supervisord"]
+CMD ["-n", "-c", "/etc/supervisord.conf"]
+
+USER www
+WORKDIR /apps/web/
